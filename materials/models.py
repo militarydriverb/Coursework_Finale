@@ -52,11 +52,7 @@ class Lesson(models.Model):
         verbose_name="Картинка",
         help_text="Загрузите картинку урока",
     )
-    video_url = models.URLField(
-        verbose_name='ссылка на видео',
-        blank=True,
-        null=True
-    )
+    video_url = models.URLField(verbose_name="ссылка на видео", blank=True, null=True)
 
     class Meta:
         verbose_name = "Курс"
