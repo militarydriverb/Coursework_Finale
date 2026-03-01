@@ -37,3 +37,19 @@ class UserSerializer(serializers.ModelSerializer):
         if "password" in validated_data:
             validated_data["password"] = make_password(validated_data["password"])
         return super().update(instance, validated_data)
+
+
+class UserPublicSerializer(serializers.ModelSerializer):
+    """Сериализатор для публичного профиля (без чувствительных данных)"""
+
+    class Meta:
+        model = User
+        fields = [
+            "id",
+            "email",
+            "first_name",
+            "phone",
+            "tg_nick",
+            "avatar",
+        ]
+        read_only_fields = fields
