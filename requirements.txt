@@ -9,7 +9,6 @@ colorama==0.4.6
 crashtest==0.4.1
 distlib==0.4.0
 Django==6.0.2
-django-filter==25.1
 django-stubs==5.2.9
 django-stubs-ext==5.2.9
 djangorestframework==3.16.1
