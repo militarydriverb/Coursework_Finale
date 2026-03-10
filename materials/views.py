@@ -1,3 +1,5 @@
+from rest_framework import status
+from rest_framework.decorators import action
 from rest_framework.generics import (
     CreateAPIView,
     DestroyAPIView,
@@ -10,9 +12,16 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.viewsets import ModelViewSet
 
-from materials.models import Course, Lesson, Subscription
+from materials.models import Course, Lesson, Subscription, Payment
 from materials.paginators import CustomPagination
-from materials.serializer import CourseSerializer, LessonSerializer
+from materials.serializer import (
+    CourseSerializer, LessonSerializer, PaymentSerializer,
+    PaymentCreateSerializer, PaymentStatusSerializer
+)
+from materials.services import (
+    create_stripe_product, create_stripe_price,
+    create_stripe_session, retrieve_stripe_session
+)
 from users.permissions import IsModeratorOrOwner, IsNotModerator, IsOwner
 
 
@@ -135,3 +144,117 @@ class SubscriptionAPIView(APIView):
             message = 'подписка добавлена'
 
         return Response({"message": message})
+
+
+class PaymentViewSet(ModelViewSet):
+    """ViewSet для работы с платежами"""
+    serializer_class = PaymentSerializer
+    queryset = Payment.objects.all()
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        """Пользователи видят только свои платежи"""
+        return Payment.objects.filter(user=self.request.user)
+
+    def get_serializer_class(self):
+        """Используем разные сериализаторы для разных действий"""
+        if self.action == 'create':
+            return PaymentCreateSerializer
+        elif self.action == 'check_status':
+            return PaymentStatusSerializer
+        return PaymentSerializer
+
+    def create(self, request, *args, **kwargs):
+        """Создание платежа и получение ссылки на оплату"""
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        course = serializer.validated_data['course']
+        user = request.user
+
+        try:
+            # Создаем продукт в Stripe
+            stripe_product = create_stripe_product(
+                name=course.name,
+                description=course.description
+            )
+
+            # Создаем цену в Stripe
+            stripe_price = create_stripe_price(
+                product_id=stripe_product['id'],
+                amount=course.price
+            )
+
+            # Создаем сессию для оплаты
+            # URL для успешной оплаты и отмены (можно настроить под ваш проект)
+            success_url = request.build_absolute_uri('/api/payments/success/')
+            cancel_url = request.build_absolute_uri('/api/payments/cancel/')
+
+            stripe_session = create_stripe_session(
+                price_id=stripe_price['id'],
+                success_url=success_url,
+                cancel_url=cancel_url
+            )
+
+            # Создаем платеж в нашей системе
+            payment = Payment.objects.create(
+                user=user,
+                course=course,
+                amount=course.price,
+                stripe_product_id=stripe_product['id'],
+                stripe_price_id=stripe_price['id'],
+                stripe_session_id=stripe_session['id'],
+                payment_url=stripe_session['url'],
+                status='pending'
+            )
+
+            # Возвращаем данные о платеже
+            response_serializer = PaymentSerializer(payment)
+            return Response(response_serializer.data, status=status.HTTP_201_CREATED)
+
+        except Exception as e:
+            return Response(
+                {'error': f'Ошибка при создании платежа: {str(e)}'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+    @action(detail=False, methods=['post'], url_path='check-status')
+    def check_status(self, request):
+        """
+        Проверка статуса платежа по session_id
+        Эндпоинт: POST /api/payments/check-status/
+        Параметры: {"session_id": "cs_test_..."}
+        """
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        session_id = serializer.validated_data['session_id']
+
+        try:
+            # Получаем данные о сессии из Stripe
+            stripe_session = retrieve_stripe_session(session_id)
+
+            # Обновляем статус платежа в нашей системе
+            payment = Payment.objects.filter(stripe_session_id=session_id).first()
+            if payment:
+                if stripe_session['payment_status'] == 'paid':
+                    payment.status = 'completed'
+                elif stripe_session['payment_status'] == 'unpaid':
+                    payment.status = 'pending'
+                else:
+                    payment.status = 'failed'
+                payment.save()
+
+            # Возвращаем информацию о статусе
+            return Response({
+                'session_id': session_id,
+                'payment_status': stripe_session['payment_status'],
+                'status': payment.status if payment else 'unknown',
+                'amount_total': stripe_session.get('amount_total', 0) / 100,  # конвертируем из копеек
+            }, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            return Response(
+                {'error': f'Ошибка при проверке статуса: {str(e)}'},
+                status=status.HTTP_400_BAD_REQUEST
+            )

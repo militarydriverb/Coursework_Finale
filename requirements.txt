@@ -9,13 +9,14 @@ colorama==0.4.6
 crashtest==0.4.1
 distlib==0.4.0
 Django==6.0.2
-django-filter==25.1
 django-stubs==5.2.9
 django-stubs-ext==5.2.9
 djangorestframework==3.16.1
 djangorestframework-simplejwt==5.5.1
 djangorestframework-stubs==3.16.8
 django-filter==25.1
+drf-spectacular==0.29.0
+drf-yasg==1.21.15
 dulwich==1.1.0
 fastjsonschema==2.21.2
 filelock==3.24.3
@@ -57,3 +58,4 @@ tzdata==2025.3
 urllib3==2.6.3
 virtualenv==20.38.0
 zstandard==0.25.0
+stripe==11.8.1
