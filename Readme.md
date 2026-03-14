@@ -382,3 +382,7 @@ python manage.py shell
 ## Автор
 
 Создано в рамках выполнения домашнего задания №31
+
+
+для запуска Workera celery -A config worker --pool=solo -l info
+для запуска Beat celery -A config beat -l info
