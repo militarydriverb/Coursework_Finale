@@ -58,4 +58,7 @@ tzdata==2025.3
 urllib3==2.6.3
 virtualenv==20.38.0
 zstandard==0.25.0
-stripe==11.8.1
+stripe==14.4.1
+celery==5.4.0
+redis==5.0.1
+django-celery-beat>=2.8.0

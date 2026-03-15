@@ -1,3 +1,5 @@
+from datetime import timedelta
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.generics import (
@@ -22,6 +24,7 @@ from materials.services import (
     create_stripe_product, create_stripe_price,
     create_stripe_session, retrieve_stripe_session
 )
+from materials.tasks import send_course_update_email
 from users.permissions import IsModeratorOrOwner, IsNotModerator, IsOwner
 
 
@@ -57,6 +60,27 @@ class CourseViewSet(ModelViewSet):
 
     def perform_create(self, serializer):
         serializer.save(owner=self.request.user)
+
+    def perform_update(self, serializer):
+        """Переопределяем метод обновления для отправки уведомлений подписчикам"""
+        course = self.get_object()
+
+        # Проверяем, прошло ли более 4 часов с последнего обновления
+        four_hours_ago = timezone.now() - timedelta(hours=4)
+        should_send_notification = course.updated_at < four_hours_ago
+
+        # Сохраняем обновления
+        serializer.save()
+
+        # Если прошло более 4 часов, отправляем уведомления подписчикам
+        if should_send_notification:
+            subscriptions = Subscription.objects.filter(course=course)
+            for subscription in subscriptions:
+                # Вызываем асинхронную задачу через Celery
+                send_course_update_email.delay(
+                    course_name=course.name,
+                    user_email=subscription.user.email
+                )
 
 
 class LessonListAPIView(ListAPIView):
@@ -112,6 +136,33 @@ class LessonUpdateAPIView(UpdateAPIView):
         if user.groups.filter(name='Модераторы').exists():
             return Lesson.objects.all()
         return Lesson.objects.filter(owner=user)
+
+    def perform_update(self, serializer):
+        """Переопределяем метод обновления урока для отправки уведомлений о курсе"""
+        lesson = self.get_object()
+
+        # Сохраняем обновления урока
+        serializer.save()
+
+        # Если урок привязан к курсу, проверяем необходимость отправки уведомлений
+        if lesson.course:
+            course = lesson.course
+            # Проверяем, прошло ли более 4 часов с последнего обновления курса
+            four_hours_ago = timezone.now() - timedelta(hours=4)
+            should_send_notification = course.updated_at < four_hours_ago
+
+            if should_send_notification:
+                # Обновляем время обновления курса
+                course.save()
+
+                # Отправляем уведомления подписчикам курса
+                subscriptions = Subscription.objects.filter(course=course)
+                for subscription in subscriptions:
+                    # Вызываем асинхронную задачу через Celery
+                    send_course_update_email.delay(
+                        course_name=course.name,
+                        user_email=subscription.user.email
+                    )
 
 
 class LessonDestroyAPIView(DestroyAPIView):
