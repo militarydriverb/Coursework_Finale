@@ -13,11 +13,11 @@ class PaymentSerializer(serializers.ModelSerializer):
 
 class SubscriptionSerializer(serializers.ModelSerializer):
     # Выводим название курса вместо его ID
-    course_name = serializers.ReadOnlyField(source='course.name')
+    course_name = serializers.ReadOnlyField(source="course.name")
 
     class Meta:
         model = Subscription
-        fields = ['course', 'course_name']
+        fields = ["course", "course_name"]
 
 
 class UserSerializer(serializers.ModelSerializer):

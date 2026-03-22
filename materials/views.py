@@ -1,4 +1,5 @@
 from datetime import timedelta
+
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.decorators import action
@@ -7,22 +8,28 @@ from rest_framework.generics import (
     DestroyAPIView,
     ListAPIView,
     RetrieveAPIView,
-    UpdateAPIView, get_object_or_404,
+    UpdateAPIView,
+    get_object_or_404,
 )
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.viewsets import ModelViewSet
 
-from materials.models import Course, Lesson, Subscription, Payment
+from materials.models import Course, Lesson, Payment, Subscription
 from materials.paginators import CustomPagination
 from materials.serializer import (
-    CourseSerializer, LessonSerializer, PaymentSerializer,
-    PaymentCreateSerializer, PaymentStatusSerializer
+    CourseSerializer,
+    LessonSerializer,
+    PaymentCreateSerializer,
+    PaymentSerializer,
+    PaymentStatusSerializer,
 )
 from materials.services import (
-    create_stripe_product, create_stripe_price,
-    create_stripe_session, retrieve_stripe_session
+    create_stripe_price,
+    create_stripe_product,
+    create_stripe_session,
+    retrieve_stripe_session,
 )
 from materials.tasks import send_course_update_email
 from users.permissions import IsModeratorOrOwner, IsNotModerator, IsOwner
@@ -39,18 +46,18 @@ class CourseViewSet(ModelViewSet):
         Обычные пользователи видят только свои курсы.
         """
         user = self.request.user
-        if user.groups.filter(name='Модераторы').exists():
+        if user.groups.filter(name="Модераторы").exists():
             return Course.objects.all()
         return Course.objects.filter(owner=user)
 
     def get_permissions(self):
-        if self.action == 'create':
+        if self.action == "create":
             # Создавать могут только не-модераторы
             self.permission_classes = [IsAuthenticated, IsNotModerator]
-        elif self.action == 'destroy':
+        elif self.action == "destroy":
             # Удалять могут только владельцы (не модераторы)
             self.permission_classes = [IsAuthenticated, IsNotModerator, IsOwner]
-        elif self.action in ['update', 'partial_update']:
+        elif self.action in ["update", "partial_update"]:
             # Редактировать могут модераторы или владельцы
             self.permission_classes = [IsAuthenticated, IsModeratorOrOwner]
         else:
@@ -78,8 +85,7 @@ class CourseViewSet(ModelViewSet):
             for subscription in subscriptions:
                 # Вызываем асинхронную задачу через Celery
                 send_course_update_email.delay(
-                    course_name=course.name,
-                    user_email=subscription.user.email
+                    course_name=course.name, user_email=subscription.user.email
                 )
 
 
@@ -94,7 +100,7 @@ class LessonListAPIView(ListAPIView):
         Обычные пользователи видят только свои уроки.
         """
         user = self.request.user
-        if user.groups.filter(name='Модераторы').exists():
+        if user.groups.filter(name="Модераторы").exists():
             return Lesson.objects.all()
         return Lesson.objects.filter(owner=user)
 
@@ -109,7 +115,7 @@ class LessonRetrieveAPIView(RetrieveAPIView):
         Обычные пользователи видят только свои уроки.
         """
         user = self.request.user
-        if user.groups.filter(name='Модераторы').exists():
+        if user.groups.filter(name="Модераторы").exists():
             return Lesson.objects.all()
         return Lesson.objects.filter(owner=user)
 
@@ -133,7 +139,7 @@ class LessonUpdateAPIView(UpdateAPIView):
         Обычные пользователи видят только свои уроки.
         """
         user = self.request.user
-        if user.groups.filter(name='Модераторы').exists():
+        if user.groups.filter(name="Модераторы").exists():
             return Lesson.objects.all()
         return Lesson.objects.filter(owner=user)
 
@@ -160,8 +166,7 @@ class LessonUpdateAPIView(UpdateAPIView):
                 for subscription in subscriptions:
                     # Вызываем асинхронную задачу через Celery
                     send_course_update_email.delay(
-                        course_name=course.name,
-                        user_email=subscription.user.email
+                        course_name=course.name, user_email=subscription.user.email
                     )
 
 
@@ -182,23 +187,24 @@ class SubscriptionAPIView(APIView):
 
     def post(self, *args, **kwargs):
         user = self.request.user
-        course_id = self.request.data.get('course')
+        course_id = self.request.data.get("course")
         course_item = get_object_or_404(Course, pk=course_id)
 
         subs_item = Subscription.objects.filter(user=user, course=course_item)
 
         if subs_item.exists():
             subs_item.delete()
-            message = 'подписка удалена'
+            message = "подписка удалена"
         else:
             Subscription.objects.create(user=user, course=course_item)
-            message = 'подписка добавлена'
+            message = "подписка добавлена"
 
         return Response({"message": message})
 
 
 class PaymentViewSet(ModelViewSet):
     """ViewSet для работы с платежами"""
+
     serializer_class = PaymentSerializer
     queryset = Payment.objects.all()
     permission_classes = [IsAuthenticated]
@@ -209,9 +215,9 @@ class PaymentViewSet(ModelViewSet):
 
     def get_serializer_class(self):
         """Используем разные сериализаторы для разных действий"""
-        if self.action == 'create':
+        if self.action == "create":
             return PaymentCreateSerializer
-        elif self.action == 'check_status':
+        elif self.action == "check_status":
             return PaymentStatusSerializer
         return PaymentSerializer
 
@@ -220,31 +226,29 @@ class PaymentViewSet(ModelViewSet):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        course = serializer.validated_data['course']
+        course = serializer.validated_data["course"]
         user = request.user
 
         try:
             # Создаем продукт в Stripe
             stripe_product = create_stripe_product(
-                name=course.name,
-                description=course.description
+                name=course.name, description=course.description
             )
 
             # Создаем цену в Stripe
             stripe_price = create_stripe_price(
-                product_id=stripe_product['id'],
-                amount=course.price
+                product_id=stripe_product["id"], amount=course.price
             )
 
             # Создаем сессию для оплаты
             # URL для успешной оплаты и отмены (можно настроить под ваш проект)
-            success_url = request.build_absolute_uri('/api/payments/success/')
-            cancel_url = request.build_absolute_uri('/api/payments/cancel/')
+            success_url = request.build_absolute_uri("/api/payments/success/")
+            cancel_url = request.build_absolute_uri("/api/payments/cancel/")
 
             stripe_session = create_stripe_session(
-                price_id=stripe_price['id'],
+                price_id=stripe_price["id"],
                 success_url=success_url,
-                cancel_url=cancel_url
+                cancel_url=cancel_url,
             )
 
             # Создаем платеж в нашей системе
@@ -252,11 +256,11 @@ class PaymentViewSet(ModelViewSet):
                 user=user,
                 course=course,
                 amount=course.price,
-                stripe_product_id=stripe_product['id'],
-                stripe_price_id=stripe_price['id'],
-                stripe_session_id=stripe_session['id'],
-                payment_url=stripe_session['url'],
-                status='pending'
+                stripe_product_id=stripe_product["id"],
+                stripe_price_id=stripe_price["id"],
+                stripe_session_id=stripe_session["id"],
+                payment_url=stripe_session["url"],
+                status="pending",
             )
 
             # Возвращаем данные о платеже
@@ -265,11 +269,11 @@ class PaymentViewSet(ModelViewSet):
 
         except Exception as e:
             return Response(
-                {'error': f'Ошибка при создании платежа: {str(e)}'},
-                status=status.HTTP_400_BAD_REQUEST
+                {"error": f"Ошибка при создании платежа: {str(e)}"},
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
-    @action(detail=False, methods=['post'], url_path='check-status')
+    @action(detail=False, methods=["post"], url_path="check-status")
     def check_status(self, request):
         """
         Проверка статуса платежа по session_id
@@ -279,7 +283,7 @@ class PaymentViewSet(ModelViewSet):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        session_id = serializer.validated_data['session_id']
+        session_id = serializer.validated_data["session_id"]
 
         try:
             # Получаем данные о сессии из Stripe
@@ -288,24 +292,28 @@ class PaymentViewSet(ModelViewSet):
             # Обновляем статус платежа в нашей системе
             payment = Payment.objects.filter(stripe_session_id=session_id).first()
             if payment:
-                if stripe_session['payment_status'] == 'paid':
-                    payment.status = 'completed'
-                elif stripe_session['payment_status'] == 'unpaid':
-                    payment.status = 'pending'
+                if stripe_session["payment_status"] == "paid":
+                    payment.status = "completed"
+                elif stripe_session["payment_status"] == "unpaid":
+                    payment.status = "pending"
                 else:
-                    payment.status = 'failed'
+                    payment.status = "failed"
                 payment.save()
 
             # Возвращаем информацию о статусе
-            return Response({
-                'session_id': session_id,
-                'payment_status': stripe_session['payment_status'],
-                'status': payment.status if payment else 'unknown',
-                'amount_total': stripe_session.get('amount_total', 0) / 100,  # конвертируем из копеек
-            }, status=status.HTTP_200_OK)
+            return Response(
+                {
+                    "session_id": session_id,
+                    "payment_status": stripe_session["payment_status"],
+                    "status": payment.status if payment else "unknown",
+                    "amount_total": stripe_session.get("amount_total", 0)
+                    / 100,  # конвертируем из копеек
+                },
+                status=status.HTTP_200_OK,
+            )
 
         except Exception as e:
             return Response(
-                {'error': f'Ошибка при проверке статуса: {str(e)}'},
-                status=status.HTTP_400_BAD_REQUEST
+                {"error": f"Ошибка при проверке статуса: {str(e)}"},
+                status=status.HTTP_400_BAD_REQUEST,
             )

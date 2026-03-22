@@ -2,7 +2,7 @@ from rest_framework import serializers
 from rest_framework.fields import SerializerMethodField
 from rest_framework.serializers import ModelSerializer
 
-from materials.models import Course, Lesson, Subscription, Payment
+from materials.models import Course, Lesson, Payment, Subscription
 from materials.validators import validate_youtube_url
 
 
@@ -16,7 +16,7 @@ class LessonSerializer(ModelSerializer):
 
 class CourseSerializer(ModelSerializer):
     lessons_count = SerializerMethodField()
-    lessons = LessonSerializer(source='lesson_set', many=True, read_only=True)
+    lessons = LessonSerializer(source="lesson_set", many=True, read_only=True)
     is_subscribed = serializers.SerializerMethodField()
 
     class Meta:
@@ -27,7 +27,7 @@ class CourseSerializer(ModelSerializer):
         return obj.lesson_set.count()
 
     def get_is_subscribed(self, obj):
-        user = self.context.get('request').user
+        user = self.context.get("request").user
         if user.is_authenticated:
             return Subscription.objects.filter(user=user, course=obj).exists()
         return False
@@ -39,14 +39,27 @@ class PaymentSerializer(ModelSerializer):
     class Meta:
         model = Payment
         fields = [
-            'id', 'user', 'course', 'amount', 'stripe_product_id',
-            'stripe_price_id', 'stripe_session_id', 'payment_url',
-            'status', 'created_at', 'updated_at'
+            "id",
+            "user",
+            "course",
+            "amount",
+            "stripe_product_id",
+            "stripe_price_id",
+            "stripe_session_id",
+            "payment_url",
+            "status",
+            "created_at",
+            "updated_at",
         ]
         read_only_fields = [
-            'id', 'stripe_product_id', 'stripe_price_id',
-            'stripe_session_id', 'payment_url', 'status',
-            'created_at', 'updated_at'
+            "id",
+            "stripe_product_id",
+            "stripe_price_id",
+            "stripe_session_id",
+            "payment_url",
+            "status",
+            "created_at",
+            "updated_at",
         ]
 
 
@@ -55,7 +68,7 @@ class PaymentCreateSerializer(ModelSerializer):
 
     class Meta:
         model = Payment
-        fields = ['course']
+        fields = ["course"]
 
     def validate_course(self, value):
         """Проверяем, что курс имеет цену"""
@@ -66,6 +79,9 @@ class PaymentCreateSerializer(ModelSerializer):
 
 class PaymentStatusSerializer(serializers.Serializer):
     """Сериализатор для получения статуса платежа"""
+
     session_id = serializers.CharField(required=True, help_text="ID сессии Stripe")
     status = serializers.CharField(read_only=True, help_text="Статус платежа")
-    payment_status = serializers.CharField(read_only=True, help_text="Статус оплаты в Stripe")
+    payment_status = serializers.CharField(
+        read_only=True, help_text="Статус оплаты в Stripe"
+    )

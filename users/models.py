@@ -7,7 +7,7 @@ from materials.models import Course, Lesson
 class UserManager(BaseUserManager):
     def create_user(self, email, password=None, **extra_fields):
         if not email:
-            raise ValueError('Email обязателен')
+            raise ValueError("Email обязателен")
         email = self.normalize_email(email)
         user = self.model(email=email, **extra_fields)
         user.set_password(password)
@@ -15,8 +15,8 @@ class UserManager(BaseUserManager):
         return user
 
     def create_superuser(self, email, password=None, **extra_fields):
-        extra_fields.setdefault('is_staff', True)
-        extra_fields.setdefault('is_superuser', True)
+        extra_fields.setdefault("is_staff", True)
+        extra_fields.setdefault("is_superuser", True)
         return self.create_user(email, password, **extra_fields)
 
 
@@ -63,58 +63,62 @@ class User(AbstractUser):
 
 class Payment(models.Model):
     PAYMENT_METHOD_CHOICES = [
-        ('cash', 'Наличные'),
-        ('transfer', 'Перевод на счет'),
+        ("cash", "Наличные"),
+        ("transfer", "Перевод на счет"),
     ]
 
     user = models.ForeignKey(
         User,
         on_delete=models.CASCADE,
-        related_name='payments',
-        verbose_name='Пользователь',
-        help_text='Выберите пользователя'
+        related_name="payments",
+        verbose_name="Пользователь",
+        help_text="Выберите пользователя",
     )
     payment_date = models.DateTimeField(
-        auto_now_add=True,
-        verbose_name='Дата оплаты',
-        help_text='Дата и время оплаты'
+        auto_now_add=True, verbose_name="Дата оплаты", help_text="Дата и время оплаты"
     )
     course = models.ForeignKey(
         Course,
         on_delete=models.SET_NULL,
         blank=True,
         null=True,
-        related_name='payments',
-        verbose_name='Оплаченный курс',
-        help_text='Выберите оплаченный курс'
+        related_name="payments",
+        verbose_name="Оплаченный курс",
+        help_text="Выберите оплаченный курс",
     )
     lesson = models.ForeignKey(
         Lesson,
         on_delete=models.SET_NULL,
         blank=True,
         null=True,
-        related_name='payments',
-        verbose_name='Оплаченный урок',
-        help_text='Выберите оплаченный урок'
+        related_name="payments",
+        verbose_name="Оплаченный урок",
+        help_text="Выберите оплаченный урок",
     )
     amount = models.DecimalField(
         max_digits=10,
         decimal_places=2,
-        verbose_name='Сумма оплаты',
-        help_text='Укажите сумму оплаты'
+        verbose_name="Сумма оплаты",
+        help_text="Укажите сумму оплаты",
     )
     payment_method = models.CharField(
         max_length=10,
         choices=PAYMENT_METHOD_CHOICES,
-        verbose_name='Способ оплаты',
-        help_text='Выберите способ оплаты'
+        verbose_name="Способ оплаты",
+        help_text="Выберите способ оплаты",
     )
 
     class Meta:
-        verbose_name = 'Платеж'
-        verbose_name_plural = 'Платежи'
-        ordering = ['-payment_date']
+        verbose_name = "Платеж"
+        verbose_name_plural = "Платежи"
+        ordering = ["-payment_date"]
 
     def __str__(self):
-        paid_for = self.course.name if self.course else self.lesson.name if self.lesson else 'Неизвестно'
+        paid_for = (
+            self.course.name
+            if self.course
+            else self.lesson.name
+            if self.lesson
+            else "Неизвестно"
+        )
         return f"{self.user.email} - {paid_for} - {self.amount}"

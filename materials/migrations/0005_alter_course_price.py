@@ -4,7 +4,6 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("materials", "0004_alter_lesson_options_course_price_payment"),
     ]

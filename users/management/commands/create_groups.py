@@ -1,12 +1,12 @@
-from django.core.management.base import BaseCommand
 from django.contrib.auth.models import Group
+from django.core.management.base import BaseCommand
 
 
 class Command(BaseCommand):
-    help = 'Создает группу модераторов'
+    help = "Создает группу модераторов"
 
     def handle(self, *args, **options):
-        group_name = 'Модераторы'
+        group_name = "Модераторы"
         group, created = Group.objects.get_or_create(name=group_name)
 
         if created:
