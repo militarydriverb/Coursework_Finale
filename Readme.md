@@ -528,6 +528,323 @@ python manage.py runserver
 python manage.py shell
 ```
 
+## Настройка удаленного сервера и деплой
+
+### Подготовка сервера
+
+#### 1. Требования к серверу
+- Ubuntu 20.04 или новее
+- Docker и Docker Compose установлены
+- Открыты порты: 80 (HTTP), 443 (HTTPS), 22 (SSH)
+- Минимум 2GB RAM
+
+#### 2. Установка Docker на сервере
+```bash
+# Обновление пакетов
+sudo apt update
+sudo apt upgrade -y
+
+# Установка Docker
+curl -fsSL https://get.docker.com -o get-docker.sh
+sudo sh get-docker.sh
+
+# Добавление пользователя в группу docker
+sudo usermod -aG docker $USER
+
+# Установка Docker Compose
+sudo apt install docker-compose -y
+
+# Проверка установки
+docker --version
+docker-compose --version
+```
+
+#### 3. Настройка SSH для деплоя
+```bash
+# На локальной машине: генерация SSH ключа (если еще не создан)
+ssh-keygen -t ed25519 -C "your_email@example.com"
+
+# Копирование публичного ключа на сервер
+ssh-copy-id user@your_server_ip
+
+# Проверка подключения
+ssh user@your_server_ip
+```
+
+#### 4. Подготовка каталога на сервере
+```bash
+# На сервере
+mkdir -p ~/app
+cd ~/app
+```
+
+### Настройка GitHub Actions для автоматического деплоя
+
+#### 1. Добавление GitHub Secrets
+В вашем репозитории GitHub перейдите в Settings → Secrets and variables → Actions и добавьте следующие секреты:
+
+**Обязательные секреты:**
+- `SERVER_HOST` - IP-адрес или домен вашего сервера
+- `SERVER_USER` - имя пользователя на сервере
+- `SSH_PRIVATE_KEY` - приватный SSH ключ для подключения к серверу
+- `DOCKER_USERNAME` - имя пользователя Docker Hub
+- `DOCKER_PASSWORD` - токен доступа Docker Hub
+
+**Секреты для приложения (передаются в контейнер):**
+- `SECRET_KEY` - Django SECRET_KEY
+- `DB_NAME` - название базы данных
+- `DB_USER` - пользователь базы данных
+- `DB_PASSWORD` - пароль базы данных
+- `STRIPE_SECRET_KEY` - ключ Stripe API (опционально)
+- `EMAIL_HOST_USER` - email для отправки (опционально)
+- `EMAIL_HOST_PASSWORD` - пароль от email (опционально)
+
+#### 2. Создание Docker Hub репозитория
+```bash
+# Авторизация в Docker Hub
+docker login
+
+# Создайте публичный или приватный репозиторий на https://hub.docker.com/
+# Название репозитория: <ваш_username>/viewsets-generics
+```
+
+#### 3. Структура workflow файла
+Workflow файл должен находиться в `.github/workflows/deploy.yml`:
+
+```yaml
+name: Deploy to Server
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Build and push Docker image
+        run: |
+          docker build -t ${{ secrets.DOCKER_USERNAME }}/viewsets-generics:latest .
+          docker push ${{ secrets.DOCKER_USERNAME }}/viewsets-generics:latest
+
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to server
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            cd ~/app
+            docker-compose pull
+            docker-compose up -d --force-recreate
+            docker-compose exec -T web python manage.py migrate
+```
+
+### Процесс деплоя
+
+#### Автоматический деплой через GitHub Actions
+
+**Шаг 1: Подготовка кода**
+```bash
+# Убедитесь, что все изменения зафиксированы
+git status
+git add .
+git commit -m "Deploy: описание изменений"
+```
+
+**Шаг 2: Отправка в репозиторий**
+```bash
+# Отправка в главную ветку (main)
+git push origin main
+```
+
+**Шаг 3: Мониторинг деплоя**
+1. Перейдите в GitHub → вкладка Actions
+2. Найдите запущенный workflow "Deploy to Server"
+3. Отслеживайте выполнение каждого шага:
+   - `build-and-push` - сборка и отправка Docker образа
+   - `deploy` - деплой на сервер
+
+**Шаг 4: Проверка на сервере**
+```bash
+# Подключитесь к серверу
+ssh user@your_server_ip
+
+# Проверьте статус контейнеров
+cd ~/app
+docker-compose ps
+
+# Проверьте логи
+docker-compose logs web
+docker-compose logs db
+docker-compose logs celery
+
+# Проверьте доступность API
+curl http://localhost:8000/materials/courses/
+```
+
+#### Ручной деплой (без GitHub Actions)
+
+**Шаг 1: Сборка образа локально**
+```bash
+docker build -t your_username/viewsets-generics:latest .
+docker push your_username/viewsets-generics:latest
+```
+
+**Шаг 2: Копирование файлов на сервер**
+```bash
+# Копирование docker-compose.yml и .env
+scp docker-compose.yml user@your_server_ip:~/app/
+scp .env user@your_server_ip:~/app/
+```
+
+**Шаг 3: Запуск на сервере**
+```bash
+# Подключение к серверу
+ssh user@your_server_ip
+
+# Переход в директорию приложения
+cd ~/app
+
+# Получение последнего образа
+docker-compose pull
+
+# Запуск контейнеров
+docker-compose up -d
+
+# Применение миграций
+docker-compose exec web python manage.py migrate
+
+# Создание группы модераторов
+docker-compose exec web python manage.py create_groups
+```
+
+### Управление деплоем
+
+#### Просмотр логов
+```bash
+# Все сервисы
+docker-compose logs -f
+
+# Конкретный сервис
+docker-compose logs -f web
+docker-compose logs -f celery
+
+# Последние 100 строк
+docker-compose logs --tail=100 web
+```
+
+#### Перезапуск сервисов
+```bash
+# Перезапуск всех сервисов
+docker-compose restart
+
+# Перезапуск конкретного сервиса
+docker-compose restart web
+docker-compose restart celery
+```
+
+#### Обновление приложения
+```bash
+# Получение новой версии образа
+docker-compose pull
+
+# Пересоздание контейнеров
+docker-compose up -d --force-recreate
+
+# Применение новых миграций
+docker-compose exec web python manage.py migrate
+```
+
+#### Откат к предыдущей версии
+```bash
+# Остановка текущих контейнеров
+docker-compose down
+
+# Запуск конкретной версии образа
+# Измените в docker-compose.yml: image: username/viewsets-generics:previous_tag
+docker-compose up -d
+```
+
+### Мониторинг и обслуживание
+
+#### Проверка использования ресурсов
+```bash
+# Использование Docker
+docker stats
+
+# Использование диска
+df -h
+docker system df
+
+# Очистка неиспользуемых образов и контейнеров
+docker system prune -a
+```
+
+#### Резервное копирование базы данных
+```bash
+# Создание резервной копии
+docker-compose exec db pg_dump -U postgres viewsets_and_generics > backup_$(date +%Y%m%d_%H%M%S).sql
+
+# Восстановление из резервной копии
+docker-compose exec -T db psql -U postgres viewsets_and_generics < backup_20260324_120000.sql
+```
+
+### Настройка домена и HTTPS (опционально)
+
+#### 1. Настройка DNS
+Добавьте A-запись в настройках вашего домена:
+```
+A record: @ → your_server_ip
+A record: www → your_server_ip
+```
+
+#### 2. Установка Nginx и Certbot
+```bash
+sudo apt install nginx certbot python3-certbot-nginx -y
+```
+
+#### 3. Настройка Nginx
+Создайте файл `/etc/nginx/sites-available/viewsets`:
+```nginx
+server {
+    listen 80;
+    server_name yourdomain.com www.yourdomain.com;
+
+    location / {
+        proxy_pass http://localhost:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+}
+```
+
+```bash
+# Активация конфигурации
+sudo ln -s /etc/nginx/sites-available/viewsets /etc/nginx/sites-enabled/
+sudo nginx -t
+sudo systemctl restart nginx
+```
+
+#### 4. Получение SSL сертификата
+```bash
+sudo certbot --nginx -d yourdomain.com -d www.yourdomain.com
+```
+
 ## Лицензия
 
 Учебный проект
