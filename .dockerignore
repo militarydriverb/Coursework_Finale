@@ -1,0 +1,14 @@
+.env
+.venv
+.git
+.github
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.DS_Store
+*.sqlite3
+staticfiles/
+media/
+Readme.md
+.coveragerc
