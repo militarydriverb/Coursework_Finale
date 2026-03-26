@@ -158,7 +158,8 @@ jobs:
           ssh -o StrictHostKeyChecking=no ${{ secrets.STAGING_SSH_USER }}@${{ secrets.STAGING_SERVER_IP }} bash -s << 'ENDSSH'
             set -e
             cd ${{ secrets.STAGING_SERVER_APP_DIR }}
-            git pull origin develop
+            git fetch origin
+            git reset --hard origin/${{ github.ref_name }}
             docker compose down --remove-orphans
             docker compose up -d --build
             docker image prune -f
